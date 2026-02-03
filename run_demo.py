@@ -24,7 +24,7 @@ backend = subprocess.Popen(
 time.sleep(2)
 
 print("[OK] Backend running at http://127.0.0.1:8000")
-print("[OK] Open dashboard: dashboard/index.html")
+print("[OK] Dashboard available at: http://127.0.0.1:8000/dashboard/index.html")
 print("-" * 40)
 print(" Detecting insects...\n")
 

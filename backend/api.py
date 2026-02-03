@@ -18,6 +18,21 @@ app.add_middleware(
 dashboard_path = os.path.join(os.path.dirname(__file__), "..", "dashboard")
 app.mount("/dashboard", StaticFiles(directory=dashboard_path), name="dashboard")
 
+latest_event = {
+    "status": "IDLE", # IDLE, SCANNING, VERIFYING
+    "last_detection": None
+}
+
+@app.post("/update_live_view")
+def update_live(data: dict):
+    global latest_event
+    latest_event = data
+    return {"status": "ok"}
+
+@app.get("/live_status")
+def get_live_status():
+    return latest_event
+
 @app.get("/detections")
 def get_detections():
     rows = db.conn.execute(
