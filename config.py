@@ -1,14 +1,13 @@
-# Model
+# config.py
+
 MODEL_PATH = "ai/model/oman_insect_best.pt"
 IMG_SIZE = 640
 
-# Confidence thresholds
-DRONE_CONF_THRESHOLD = 0.6
-VERIFY_THRESHOLD = 0.75
+# Raise this to 0.70 (70%)
+# Only show me the bug if the AI is SURE it's a bug.
+DRONE_CONF_THRESHOLD = 0.70 
 
-# Demo
-DEMO_IMAGE_FOLDER = "mock/demo_images"
+DRONE_IMG_PATH = "mock/aerial_view"
+TANK_IMG_PATH = "mock/ground_view"
 
-# Database
 DB_NAME = "detections.db"
-MODE = "DEMO"

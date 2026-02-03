@@ -1,10 +1,8 @@
 import requests
 
 class Coordinator:
-    def __init__(self, tank, db, verify_threshold):
-        self.tank = tank
+    def __init__(self, db):
         self.db = db
-        self.verify_threshold = verify_threshold
         self.api_url = "http://127.0.0.1:8000/update_live_view"
 
     def send_ui_update(self, status, detection=None):
@@ -14,31 +12,22 @@ class Coordinator:
                 "last_detection": detection
             })
         except:
-            pass # Ignore API errors during demo if server isn't up
+            pass 
 
-    def process(self, detections):
-        confirmed = []
-
+    def process(self, detections, source_type):
+        """
+        Simply logs and displays whatever is sent to it.
+        source_type: 'AERIAL' or 'GROUND'
+        """
         for d in detections:
-            # 1. Drone detects something
-            self.send_ui_update("AERIAL_DETECTED", d)
+            # 1. Save to Database
+            self.db.insert(d)
             
-            if d["confidence"] >= self.verify_threshold:
-                # High confidence: Confirm immediately
-                self.db.insert(d)
-                confirmed.append(d)
-            else:
-                # Low confidence: Trigger Tank
-                self.send_ui_update("DEPLOYING_GROUND_UNIT", d)
-                
-                # Simulate tank travel time
-                import time; time.sleep(1.5) 
-
-                tank_dets = self.tank.verify()
-                
-                for td in tank_dets:
-                    self.send_ui_update("GROUND_VERIFIED", td)
-                    self.db.insert(td)
-                    confirmed.append(td)
-
-        return confirmed
+            # 2. Send to Dashboard
+            if source_type == "AERIAL":
+                self.send_ui_update("AERIAL_DETECTED", d)
+                print(f"   [DETECTED] {d['class']} | {d['confidence']} | DRONE (Canopy)")
+            
+            elif source_type == "GROUND":
+                self.send_ui_update("GROUND_VERIFIED", d) # We keep the UI status name for compatibility
+                print(f"   [DETECTED] {d['class']} | {d['confidence']} | TANK (Trunk/Soil)")
