@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hybrid Insect Detection Dashboard</title>
+    <p><b>Status:</b> Live Detection Running (Demo Mode)</p>
+    <style>
+        body { font-family: Arial; background: #f4f6f8; padding: 20px; }
+        h1 { color: #2c3e50; }
+        table { width: 100%; border-collapse: collapse; background: white; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; }
+        th { background: #27ae60; color: white; }
+        .drone { color: #2980b9; }
+        .tank { color: #c0392b; }
+    </style>
+</head>
+<body>
+
+<h1>🌱 Hybrid Insect Detection Dashboard</h1>
+
+<table>
+    <thead>
+        <tr>
+            <th>Insect</th>
+            <th>Confidence</th>
+            <th>Source</th>
+            <th>Time</th>
+        </tr>
+    </thead>
+    <tbody id="data"></tbody>
+</table>
+
+<script>
+async function loadData() {
+    const res = await fetch("http://127.0.0.1:8000/detections");
+    const data = await res.json();
+    const tbody = document.getElementById("data");
+    tbody.innerHTML = "";
+
+    data.forEach(d => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${d.insect}</td>
+                <td>${(d.confidence * 100).toFixed(1)}%</td>
+                <td class="${d.source}">${d.source}</td>
+                <td>${new Date(d.timestamp).toLocaleString()}</td>
+            </tr>
+        `;
+    });
+}
+
+setInterval(loadData, 1500);
+loadData();
+</script>
+
+</body>
+</html>
