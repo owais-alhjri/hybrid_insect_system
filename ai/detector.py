@@ -15,26 +15,39 @@ class InsectDetector:
         return base64.b64encode(buffer).decode('utf-8')
 
     def detect(self, image, source):
-        # 1. Run inference (No random effects anymore!)
+        # 1. ENCODE RAW IMAGE (Always needed for scanning view)
+        raw_img_base64 = self.encode_image(image)
+
+        # 2. Run Inference
         results = self.model(
             image,
             imgsz=self.img_size,
             conf=self.conf_threshold,
-            iou=0.6,          # This helps remove duplicate boxes for the same bug
+            iou=0.6,
             verbose=False
         )[0]
 
         detections = []
-        
+
+        # --- SCENARIO A: NO BUGS FOUND ---
         if not results.boxes:
-            return []
+            # Return a "Clean" entry so the dashboard still updates
+            return [{
+                "id": str(uuid.uuid4()),
+                "class": "None",
+                "confidence": 0.0,
+                "source": source,
+                "timestamp": datetime.utcnow().isoformat(),
+                "image": raw_img_base64,      # Show clean image
+                "raw_image": raw_img_base64,  # Show clean image
+                "found": False                # FLAG: Nothing found
+            }]
 
-        # 2. Draw boxes on the image for the dashboard
+        # --- SCENARIO B: BUGS FOUND ---
+        # Create Boxed Image
         annotated_frame = results.plot() 
-        img_base64 = self.encode_image(annotated_frame)
+        boxed_img_base64 = self.encode_image(annotated_frame)
 
-        # 3. Process detections
-        # We will track which classes we have already seen in this image
         seen_classes = set()
 
         for box in results.boxes:
@@ -42,11 +55,8 @@ class InsectDetector:
             cls_name = self.model.names[cls_id]
             conf = float(box.conf[0])
 
-            # CLEANUP RULE: If we already saw this bug class in this image, 
-            # and we only want 1 alert per bug type, skip the lower confidence ones.
             if cls_name in seen_classes:
                 continue
-
             seen_classes.add(cls_name)
 
             detections.append({
@@ -55,7 +65,9 @@ class InsectDetector:
                 "confidence": round(conf, 3),
                 "source": source,
                 "timestamp": datetime.utcnow().isoformat(),
-                "image": img_base64 
+                "image": boxed_img_base64,   # Show boxed image
+                "raw_image": raw_img_base64, # Show clean image
+                "found": True                # FLAG: Bug found
             })
 
         return detections

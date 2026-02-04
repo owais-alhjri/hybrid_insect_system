@@ -22,11 +22,26 @@ latest_event = {
     "status": "IDLE", # IDLE, SCANNING, VERIFYING
     "last_detection": None
 }
-
 @app.post("/update_live_view")
 def update_live(data: dict):
     global latest_event
+    
+    # NEW LOGIC: If the incoming status is "AERIAL_SCANNING", 
+    # it means a NEW mission just started. Reset the lock!
+    if data.get("status") == "AERIAL_SCANNING":
+        latest_event = data
+        return {"status": "reset_and_updated"}
+
+    # Keep the lock for other statuses
+    if latest_event.get("status") == "FINISHED":
+        return {"status": "locked"}
+    
     latest_event = data
+    return {"status": "ok"}
+@app.post("/mission_complete")
+def mission_complete():
+    global latest_event
+    latest_event = {"status": "FINISHED", "last_detection": None}
     return {"status": "ok"}
 
 @app.get("/live_status")

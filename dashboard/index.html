@@ -1,176 +1,331 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agri-Tech Command Center</title>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Oman Agri-Tech Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { background-color: #0f172a; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; }
-        .live-feed { border: 2px solid #334155; height: 350px; background: #000; display: flex; align-items: center; justify-content: center; position: relative; }
-        .live-feed img { max-height: 100%; max-width: 100%; }
-        .overlay { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 4px; font-weight: bold; }
-        .blink { animation: blinker 1.5s linear infinite; color: red; }
-        @keyframes blinker { 50% { opacity: 0; } }
-        .status-box { transition: all 0.3s ease; }
+      body {
+        background-color: #020617;
+        color: #f1f5f9;
+        font-family: "Inter", ui-sans-serif, system-ui;
+      }
+      .glass {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .live-feed {
+        height: 400px;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        position: relative;
+        border-radius: 8px;
+      }
+      .scan-line {
+        width: 100%;
+        height: 2px;
+        background: rgba(34, 197, 94, 0.5);
+        position: absolute;
+        top: 0;
+        animation: scan 2s linear infinite;
+        display: none;
+      }
+      @keyframes scan {
+        from {
+          top: 0;
+        }
+        to {
+          top: 100%;
+        }
+      }
+      .completion-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 100;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
     </style>
-</head>
-<body class="p-6">
+  </head>
+  <body class="p-8">
+    <div
+      id="finish-overlay"
+      style="
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.95);
+        z-index: 9999;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      "
+    >
+      <h1
+        style="
+          color: #22c55e;
+          font-size: 5rem;
+          font-weight: 900;
+          margin-bottom: 1rem;
+        "
+      >
+        MISSION COMPLETE
+      </h1>
+      <p style="color: #94a3b8; font-size: 1.5rem">
+        All agricultural sectors have been verified.
+      </p>
+      <button
+        onclick="window.location.reload()"
+        style="
+          margin-top: 2rem;
+          padding: 1rem 3rem;
+          background: #22c55e;
+          color: white;
+          border-radius: 99px;
+          font-weight: bold;
+          cursor: pointer;
+        "
+      >
+        RESTART SYSTEM
+      </button>
+    </div>
 
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+    <div class="max-w-7xl mx-auto">
+      <header
+        class="flex justify-between items-end mb-8 border-b border-slate-800 pb-6"
+      >
         <div>
-            <h1 class="text-3xl font-bold text-green-500">HYBRID INSPECTION SYSTEM</h1>
-            <p class="text-slate-400 text-sm">Aerial-Ground Cooperative Robotics // Omani Pest Control</p>
+          <h1 class="text-4xl font-black tracking-tighter text-white">
+            AGRI-TECH <span class="text-green-500 italic">OMAN</span>
+          </h1>
+          <p class="text-slate-400 font-mono text-sm tracking-widest uppercase">
+            Hybrid Autonomous Inspection Network
+          </p>
         </div>
-        <div class="text-right">
-            <div class="text-xs text-slate-500">SYSTEM STATUS</div>
-            <div class="text-green-400 font-bold">ONLINE ●</div>
+        <div class="flex gap-8 text-right font-mono">
+          <div>
+            <p class="text-xs text-slate-500">OPERATIONAL MODE</p>
+            <p class="text-green-400 font-bold">AUTONOMOUS</p>
+          </div>
+          <div>
+            <p class="text-xs text-slate-500">NETWORK</p>
+            <p class="text-blue-400 font-bold">ENCRYPTED</p>
+          </div>
         </div>
-    </div>
+      </header>
 
-    <!-- Main Live View Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-        
-        <!-- Aerial Unit Panel -->
-        <div class="bg-slate-800 p-4 rounded-lg shadow-lg status-box" id="drone-panel">
-            <div class="flex justify-between mb-2">
-                <h2 class="text-blue-400 font-bold">AERIAL UNIT (TELLO)</h2>
-                <span id="drone-status" class="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded">SCANNING</span>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div
+          class="lg:col-span-2 glass p-6 rounded-2xl transition-all duration-500"
+          id="drone-card"
+        >
+          <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold flex items-center gap-2">
+              <span class="text-blue-500">🚁</span> AERIAL UNIT: DJI TELLO
+            </h2>
+            <span
+              id="drone-tag"
+              class="px-3 py-1 rounded text-xs font-bold bg-slate-700"
+              >STANDBY</span
+            >
+          </div>
+          <div class="live-feed">
+            <div id="drone-scan" class="scan-line"></div>
+            <img
+              id="drone-img"
+              src=""
+              class="w-full h-full object-cover hidden"
+            />
+            <div id="drone-idle" class="text-slate-700 font-mono">
+              WAITING FOR AERIAL UPLINK...
             </div>
-            <div class="live-feed">
-                <div class="overlay text-blue-400">CAM-01 [AERIAL]</div>
-                <img id="drone-img" src="" style="display:none;">
-                <p id="drone-placeholder" class="text-slate-600">No Active Stream</p>
+          </div>
+          <div class="mt-4 flex gap-6">
+            <div class="glass p-3 rounded-xl flex-1">
+              <p class="text-xs text-slate-500">TARGET CLASS</p>
+              <p id="drone-class" class="text-lg font-bold">-</p>
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-4 text-sm">
-                <div>Confidence: <span id="drone-conf" class="text-white">-</span></div>
-                <div>Class: <span id="drone-class" class="text-white">-</span></div>
+            <div class="glass p-3 rounded-xl flex-1">
+              <p class="text-xs text-slate-500">CONFIDENCE</p>
+              <p id="drone-conf" class="text-lg font-bold text-blue-400">-</p>
             </div>
+          </div>
         </div>
 
-        <!-- Ground Unit Panel -->
-        <div class="bg-slate-800 p-4 rounded-lg shadow-lg status-box opacity-50" id="tank-panel">
-            <div class="flex justify-between mb-2">
-                <h2 class="text-red-400 font-bold">GROUND UNIT (G1 TANK)</h2>
-                <span id="tank-status" class="text-xs bg-red-900 text-red-200 px-2 py-1 rounded">STANDBY</span>
+        <div
+          class="glass p-6 rounded-2xl opacity-40 transition-all duration-500"
+          id="tank-card"
+        >
+          <h2 class="text-xl font-bold flex items-center gap-2 mb-4">
+            <span class="text-red-500">🚜</span> GROUND UNIT: G1 TANK
+          </h2>
+          <div class="live-feed !height-[250px]">
+            <div id="tank-scan" class="scan-line"></div>
+            <img
+              id="tank-img"
+              src=""
+              class="w-full h-full object-cover hidden"
+            />
+            <div id="tank-idle" class="text-slate-700 font-mono text-xs">
+              AWAITING DRONE COORDINATES...
             </div>
-            <div class="live-feed">
-                <div class="overlay text-red-400">CAM-02 [GROUND]</div>
-                <img id="tank-img" src="" style="display:none;">
-                <p id="tank-placeholder" class="text-slate-600">Waiting for Assignment</p>
+          </div>
+          <div class="mt-4 space-y-4">
+            <div class="flex justify-between border-b border-slate-700 pb-2">
+              <span class="text-slate-500 text-sm">Status</span
+              ><span id="tank-tag" class="font-bold text-sm text-red-400"
+                >IDLE</span
+              >
             </div>
-            <div class="mt-3 grid grid-cols-2 gap-4 text-sm">
-                <div>Confidence: <span id="tank-conf" class="text-white">-</span></div>
-                <div>Class: <span id="tank-class" class="text-white">-</span></div>
+            <div class="flex justify-between border-b border-slate-700 pb-2">
+              <span class="text-slate-500 text-sm">Class</span
+              ><span id="tank-class" class="font-bold text-sm">-</span>
             </div>
+            <div class="flex justify-between border-b border-slate-700 pb-2">
+              <span class="text-slate-500 text-sm">Confidence</span
+              ><span id="tank-conf" class="font-bold text-sm">-</span>
+            </div>
+          </div>
         </div>
-    </div>
+      </div>
 
-    <!-- Alert / Log Section -->
-    <div class="bg-slate-900 p-4 rounded-lg border border-slate-700">
-        <h3 class="text-slate-400 mb-3 text-sm uppercase tracking-wider">Detection Log</h3>
-        <div class="overflow-x-auto">
-            <table class="w-full text-left text-sm text-slate-300">
-                <thead class="text-xs text-slate-500 uppercase bg-slate-800">
-                    <tr>
-                        <th class="px-4 py-3">Time</th>
-                        <th class="px-4 py-3">Insect Class</th>
-                        <th class="px-4 py-3">Source</th>
-                        <th class="px-4 py-3">Confidence</th>
-                        <th class="px-4 py-3">Action Taken</th>
-                    </tr>
-                </thead>
-                <tbody id="log-table">
-                    <!-- Javascript will populate this -->
-                </tbody>
-            </table>
-        </div>
+      <div class="glass p-6 rounded-2xl">
+        <h3
+          class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4"
+        >
+          Centralized Mission Logs
+        </h3>
+        <table class="w-full text-left">
+          <thead>
+            <tr
+              class="text-slate-500 text-xs uppercase border-b border-slate-800"
+            >
+              <th class="pb-3 px-2">Timestamp</th>
+              <th class="pb-3 px-2">Unit</th>
+              <th class="pb-3 px-2">Detection</th>
+              <th class="pb-3 px-2">Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="log-table" class="text-sm"></tbody>
+        </table>
+      </div>
     </div>
 
     <script>
-        const dronePanel = document.getElementById('drone-panel');
-        const tankPanel = document.getElementById('tank-panel');
-        
-        async function updateDashboard() {
-            // 1. Get Live Status
-            const res = await fetch('/live_status');
-            const data = await res.json();
-            
-            handleLiveEvent(data);
+      const finishOverlay = document.getElementById("finish-overlay");
 
-            // 2. Get Historical Logs
-            const logRes = await fetch('/detections');
-            const logs = await logRes.json();
-            updateLogTable(logs);
+      async function update() {
+        try {
+          const res = await fetch("/live_status");
+          if (!res.ok) return;
+
+          const data = await res.json();
+          console.log("Current Status:", data.status);
+
+          // 1. Check for Finish
+          if (data.status === "FINISHED") {
+            finishOverlay.style.display = "flex";
+            return;
+          }
+
+          // 2. THIS WAS MISSING: Send the data to handleEvent to show images
+          if (data.last_detection) {
+            handleEvent(data.status, data.last_detection);
+          }
+
+          // 3. Update the logs
+          const logRes = await fetch("/detections");
+          const logs = await logRes.json();
+          const tbody = document.getElementById("log-table");
+          tbody.innerHTML = logs
+            .slice(0, 6)
+            .map(
+              (l) => `
+                <tr class="border-b border-slate-800/50">
+                    <td class="py-3 px-2 font-mono text-xs">${new Date(l.timestamp).toLocaleTimeString()}</td>
+                    <td class="py-3 px-2">
+                        <span class="px-2 py-0.5 rounded text-[10px] ${l.source === "drone" ? "bg-blue-900 text-blue-200" : "bg-red-900 text-red-200"}">
+                            ${l.source.toUpperCase()}
+                        </span>
+                    </td>
+                    <td class="py-3 px-2 font-bold">${l.insect}</td>
+                    <td class="py-3 px-2 text-green-400">${(l.confidence * 100).toFixed(1)}%</td>
+                </tr>
+            `,
+            )
+            .join("");
+        } catch (e) {
+          console.error("Update error:", e);
         }
+      }
 
-        function handleLiveEvent(data) {
-            const status = data.status;
-            const det = data.last_detection;
+      function handleEvent(status, det) {
+        if (!det || !det.image) return;
 
-            // Reset Styles
-            dronePanel.classList.remove('border-blue-500', 'border-2');
-            tankPanel.classList.remove('border-red-500', 'border-2');
-            tankPanel.classList.add('opacity-50');
+        const isDrone = status.startsWith("AERIAL");
+        const panel = isDrone
+          ? document.getElementById("drone-card")
+          : document.getElementById("tank-card");
+        const img = isDrone
+          ? document.getElementById("drone-img")
+          : document.getElementById("tank-img");
+        const idle = isDrone
+          ? document.getElementById("drone-idle")
+          : document.getElementById("tank-idle");
+        const scanLine = isDrone
+          ? document.getElementById("drone-scan")
+          : document.getElementById("tank-scan");
+        const tag = document.getElementById(isDrone ? "drone-tag" : "tank-tag");
 
-            if (status === 'AERIAL_DETECTED' && det) {
-                // Show Drone Image
-                document.getElementById('drone-img').src = "data:image/jpeg;base64," + det.image;
-                document.getElementById('drone-img').style.display = 'block';
-                document.getElementById('drone-placeholder').style.display = 'none';
-                
-                document.getElementById('drone-class').innerText = det.class;
-                document.getElementById('drone-conf').innerText = (det.confidence * 100).toFixed(1) + '%';
-                
-                document.getElementById('drone-status').innerText = "DETECTED";
-                dronePanel.classList.add('border-blue-500', 'border-2');
-            } 
-            else if (status === 'DEPLOYING_GROUND_UNIT') {
-                // Drone found something low confidence -> Activate Tank UI
-                document.getElementById('drone-status').innerText = "LOW CONFIDENCE";
-                document.getElementById('tank-status').innerText = "DEPLOYING...";
-                document.getElementById('tank-status').classList.add('blink');
-                
-                tankPanel.classList.remove('opacity-50');
-            } 
-            else if (status === 'GROUND_VERIFIED' && det) {
-                // Show Tank Image
-                document.getElementById('tank-img').src = "data:image/jpeg;base64," + det.image;
-                document.getElementById('tank-img').style.display = 'block';
-                document.getElementById('tank-placeholder').style.display = 'none';
+        // UI Focus logic
+        document.getElementById("drone-card").classList.add("opacity-40");
+        document.getElementById("tank-card").classList.add("opacity-40");
+        panel.classList.remove("opacity-40");
 
-                document.getElementById('tank-class').innerText = det.class;
-                document.getElementById('tank-conf').innerText = (det.confidence * 100).toFixed(1) + '%';
-                
-                document.getElementById('tank-status').innerText = "VERIFIED";
-                document.getElementById('tank-status').classList.remove('blink');
-                
-                tankPanel.classList.remove('opacity-50');
-                tankPanel.classList.add('border-red-500', 'border-2');
-            }
+        // Update Image
+        img.src = "data:image/jpeg;base64," + det.image;
+        img.classList.remove("hidden");
+        idle.classList.add("hidden");
+
+        // Status Tag Logic
+        tag.innerText = status.split("_")[1];
+
+        if (status.includes("SCANNING")) {
+          scanLine.style.display = "block";
+          tag.className =
+            "px-3 py-1 rounded text-xs font-bold bg-yellow-600 text-white animate-pulse";
+        } else {
+          scanLine.style.display = "none";
+          tag.className = `px-3 py-1 rounded text-xs font-bold ${status.includes("CLEAN") ? "bg-green-600" : "bg-blue-600"} text-white`;
+
+          // Update Class and Confidence text
+          const classEl = document.getElementById(
+            isDrone ? "drone-class" : "tank-class",
+          );
+          const confEl = document.getElementById(
+            isDrone ? "drone-conf" : "tank-conf",
+          );
+
+          if (det.class && det.class !== "None") {
+            classEl.innerText = det.class.toUpperCase();
+            confEl.innerText = (det.confidence * 100).toFixed(1) + "%";
+          } else {
+            classEl.innerText = "CLEAR";
+            confEl.innerText = "0%";
+          }
         }
+      }
 
-        function updateLogTable(logs) {
-            const tbody = document.getElementById('log-table');
-            tbody.innerHTML = '';
-            logs.slice(0, 5).forEach(log => {
-                let action = log.source === 'drone' ? 'Aerial Log' : 'Ground Verification';
-                let color = log.source === 'drone' ? 'text-blue-400' : 'text-red-400';
-                
-                tbody.innerHTML += `
-                    <tr class="border-b border-slate-800">
-                        <td class="px-4 py-2">${new Date(log.timestamp).toLocaleTimeString()}</td>
-                        <td class="px-4 py-2 font-bold">${log.insect}</td>
-                        <td class="px-4 py-2 ${color}">${log.source.toUpperCase()}</td>
-                        <td class="px-4 py-2">${(log.confidence * 100).toFixed(1)}%</td>
-                        <td class="px-4 py-2 text-xs text-slate-400">${action}</td>
-                    </tr>
-                `;
-            });
-        }
-
-        setInterval(updateDashboard, 1000);
+      // Start the heartbeat
+      setInterval(update, 1000);
     </script>
-</body>
+  </body>
 </html>
