@@ -23,7 +23,7 @@ class InsectDetector:
             image,
             imgsz=self.img_size,
             conf=self.conf_threshold,
-            iou=0.6,
+            iou=0.45,
             verbose=False
         )[0]
 
