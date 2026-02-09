@@ -11,38 +11,34 @@ def kill_zombies():
 def banner():
     print("=" * 40)
     print(" 🛰️  OMAN AGRI-TECH SYSTEM  🛰️ ")
-    print(" Backend  : http://127.0.0.1:8000 (ACTIVE)")
-    print(" Simulation: Running main.py")
+    print(" Backend  : http://127.0.0.1:8000")
+    print(" Frontend : Ensure React is running on :3000")
     print("=" * 40)
 
 if __name__ == "__main__":
     kill_zombies()
+    time.sleep(1) # Wait for ports to clear
     banner()
 
-    # 1. Start Backend and KEEP IT RUNNING
     print("[INFO] Starting FastAPI Backend...")
+    # Using python -m uvicorn allows better path resolution
     backend = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "backend.api:app", "--port", "8000"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "backend.api:app",
+            "--host", "127.0.0.1",
+            "--port", "8000",
+            "--log-level", "info"
+        ]
     )
-
-    time.sleep(3)
 
     try:
         while True:
-            print("\n[READY] Starting New Mission Simulation...")
-            # 2. Run the simulation
-            subprocess.call([sys.executable, "main.py"])
-            
-            print("\n[WAITING] Mission Finished. Dashboard is still LIVE.")
-            print("[ACTION] Press 'REBOOT' in browser or 'Ctrl+C' here to stop all.")
-            
-            # This loop keeps the script alive so the backend doesn't die
-            while True:
-                time.sleep(1)
+            time.sleep(1)
     except KeyboardInterrupt:
-        print("\n[SHUTDOWN] Stopping all services...")
+        print("\n[SHUTDOWN]")
     finally:
         backend.terminate()
         kill_zombies()

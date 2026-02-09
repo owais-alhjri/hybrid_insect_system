@@ -1,43 +1,37 @@
-import time
-import requests
+import time, config
 from ai.detector import InsectDetector
 from mock.mock_drone import MockDrone
 from mock.mock_tank import MockTank
 from controller.coordinator import Coordinator
 from backend.database import DetectionDB
-import config
+import requests
 
-# --- NEW: RESET DASHBOARD ON STARTUP ---
-try:
-    requests.post("http://127.0.0.1:8000/reset")
-    print("🧹 Dashboard Reset.")
-except:
-    pass 
-
-# Initialize System
+# Initialize Components
 detector = InsectDetector(config.MODEL_PATH, config.IMG_SIZE, config.DRONE_CONF_THRESHOLD)
 db = DetectionDB(config.DB_NAME)
 drone = MockDrone(detector)
 tank = MockTank(detector)
 brain = Coordinator(db) 
 
-print("🚀 Starting Mission...")
+print("[SYSTEM] Simulation Initialized. Waiting for mission start...")
 
 try:
     while True:
+        # 1. Drone Scan
         drone_detections, location_index = drone.scan()
         if location_index == -1: break 
-            
-        print(f"\n--- SECTOR {location_index + 1} ---")
-        brain.process(drone_detections, "AERIAL")
         
-        time.sleep(2) 
+        # ONLY call brain.process. Do NOT call requests.post manually here.
+        brain.process(drone_detections, "AERIAL")
+        time.sleep(1) 
+
+        # 2. Tank Verify
         tank_detections = tank.verify(location_index)
+        
+        # ONLY call brain.process.
         brain.process(tank_detections, "GROUND")
-        time.sleep(5) 
+        time.sleep(2)
 
-    print("\n✅ MISSION COMPLETE.")
     requests.post("http://127.0.0.1:8000/mission_complete")
-
 except KeyboardInterrupt:
     print("\n[STOPPED]")

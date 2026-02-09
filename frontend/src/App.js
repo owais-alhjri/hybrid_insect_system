@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import "./command-center.css";
 
 const API_BASE = "http://127.0.0.1:8000";
@@ -9,102 +9,177 @@ export default function App() {
   const [tankDet, setTankDet] = useState(null);
   const [logs, setLogs] = useState([]);
   const [finished, setFinished] = useState(false);
+  const socketRef = useRef(null);
 
   useEffect(() => {
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
+    const connect = () => {
+      const ws = new WebSocket("ws://127.0.0.1:8000/ws");
+
+      ws.onopen = () => console.log("Connected to Backend");
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setStatus(data.status);
+        setFinished(data.status === "FINISHED");
+
+        if (data.last_detection) {
+          const det = data.last_detection;
+
+          // 1. Update Live View
+          if (det.source === "drone") {
+            setDroneDet(det);
+          } else if (det.source === "tank") {
+            setTankDet(det);
+          }
+
+          // 2. Update Logs (With Filters)
+          setLogs((prevLogs) => {
+            // FILTER: Don't log "Scanning..."
+            if (det.class === "Scanning...") return prevLogs;
+
+            const newTimestamp = det.timestamp || new Date().toISOString();
+
+            // FILTER: Prevent duplicates
+            if (prevLogs.length > 0) {
+              const last = prevLogs[0];
+              if (
+                last.id === det.id ||
+                (last.timestamp === newTimestamp && last.insect === det.class)
+              ) {
+                return prevLogs;
+              }
+            }
+
+            const newEntry = {
+              ...det,
+              insect: det.class || "Unknown",
+              timestamp: newTimestamp,
+            };
+
+            return [newEntry, ...prevLogs].slice(0, 50);
+          });
+        }
+      };
+
+      ws.onclose = () => setTimeout(connect, 2000);
+      socketRef.current = ws;
+    };
+
+    connect();
+
+    return () => {
+      if (socketRef.current) socketRef.current.close();
+    };
   }, []);
 
-  async function update() {
+  useEffect(() => {
+    if (!finished) return;
+    fetch(`${API_BASE}/detections`)
+      .then((r) => r.json())
+      .then((data) => {
+        const formattedLogs = data.map((d) => ({
+          ...d,
+          insect: d.insect || d.class || "Unknown",
+        }));
+        setLogs(formattedLogs);
+      });
+  }, [finished]);
+
+  const handleStartMission = async () => {
     try {
-      const res = await fetch(`${API_BASE}/live_status`);
-      if (!res.ok) return;
+      const res = await fetch(`${API_BASE}/start_mission`, { method: "POST" });
       const data = await res.json();
-
-      setStatus(data.status);
-      
-      // Explicitly toggle finished based on backend status
-      setFinished(data.status === "FINISHED");
-
-      if (data.last_detection) {
-        if (data.status.startsWith("AERIAL")) {
-          setDroneDet(data.last_detection);
-        } else if (data.status.startsWith("GROUND")) {
-          setTankDet(data.last_detection);
-        }
+      if (data.status === "started") {
+        setFinished(false);
+        setStatus("OPERATIONAL");
+        setLogs([]);
+        setDroneDet(null);
+        setTankDet(null);
       }
-
-      const logRes = await fetch(`${API_BASE}/detections`);
-      if (logRes.ok) {
-        const logData = await logRes.json();
-        setLogs(logData.slice(0, 8));
-      }
-    } catch (e) { 
-      console.log("Waiting for backend connection..."); 
+    } catch (e) {
+      console.error("Failed to start mission");
     }
-  }
+  };
 
-const handleReboot = async () => {
-  try {
-    // 1. Tell the backend to clear "FINISHED" status
-    const response = await fetch(`${API_BASE}/reset`, { method: 'POST' });
-    
-    if (response.ok) {
-      // 2. Clear local state
+  const handleStopMission = async () => {
+    try {
+      await fetch(`${API_BASE}/stop_mission`, { method: "POST" });
+    } catch (e) {}
+  };
+
+  const handleReboot = async () => {
+    try {
+      await fetch(`${API_BASE}/reset`, { method: "POST" });
+      window.location.reload();
+    } catch (e) {
+      window.location.reload();
+    }
+  };
+
+  useEffect(() => {
+    if (status === "STOPPED" || status === "IDLE") {
       setDroneDet(null);
       setTankDet(null);
-      setFinished(false);
-      setStatus("IDLE");
-      
-      // 3. Refresh page to clear the log table and images
-      window.location.reload(); 
     }
-  } catch (e) {
-    console.error("Backend is offline. Cannot reset.");
-    // Force a reload anyway to try and clear the UI
-    window.location.reload();
-  }
-};
+  }, [status]);
+
+  const isRunning =
+    status !== "IDLE" && status !== "FINISHED" && status !== "STOPPED";
+  const canStart =
+    status === "IDLE" || status === "STOPPED" || status === "FINISHED";
 
   const renderUnit = (type) => {
-    const active = status?.startsWith(type === "drone" ? "AERIAL" : "GROUND");
-    const det = type === "drone" ? droneDet : tankDet;
-    // FIXED: Added 'scanning' definition here
+    const isDrone = type === "drone";
+    const active = status?.startsWith(isDrone ? "AERIAL" : "GROUND");
+    const det = isDrone ? droneDet : tankDet;
     const scanning = status?.includes("SCANNING") && active;
 
     return (
       <div
-        className={`glass p-6 rounded-2xl transition-all duration-700 ${active ? "ring-2 ring-green-500/50" : "opacity-60 scale-95"}`}
+        // 1. CHANGED: p-6 -> p-10 (More padding)
+        // 2. CHANGED: removed "scale-95" so it doesn't shrink
+        // 3. CHANGED: ring-2 -> ring-4 (Thicker border when active)
+        className={`glass p-3 rounded-3xl transition-all duration-700 ${
+          active
+            ? "ring-4 ring-green-500/50 shadow-2xl scale-100"
+            : "opacity-70 scale-100"
+        }`}
       >
-        <h2 className="text-xl font-bold flex items-center gap-2 mb-4">
-          {type === "drone" ? "🚁 AERIAL UNIT" : "🚜 GROUND UNIT"}
+        <h2 className="text-3xl font-bold flex items-center gap-3 mb-6">
+          {isDrone ? "🚁 AERIAL UNIT" : "🚜 GROUND UNIT"}
         </h2>
 
-        <div className="live-feed h-[300px]">
-          {scanning && <div className="scan-line block" />}
+        {/* 4. CHANGED: h-[300px] -> h-[500px] (Much taller image area) */}
+        <div className="live-feed h-[700px] relative overflow-hidden rounded-2xl bg-black/50 border border-white/10">
+          {scanning && <div className="scan-line" />}
+
           {det?.image ? (
             <img
               src={`data:image/jpeg;base64,${det.image}`}
-              className="w-full h-full object-cover rounded-lg"
-              alt="Feed"
+              className="w-full h-full object-contain"
+              alt="Live Feed"
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xs text-center px-4">
-              {type === "drone" ? "WAITING FOR UPLINK..." : "AWAITING COORDINATES..."}
+            <div className="flex items-center justify-center h-full text-slate-500 font-mono text-sm text-center px-4 tracking-widest">
+              {isDrone ? "WAITING FOR IMAGE..." : "WAITING FOR IMAGE..."}
             </div>
           )}
         </div>
 
-        <div className="mt-4 space-y-2">
-          <div className="glass p-3 rounded-xl flex justify-between items-center">
-            <span className="text-[10px] text-slate-500 uppercase font-bold">Target</span>
-            <span className="font-bold text-green-400">
+        <div className="mt-6 space-y-3">
+          <div className="glass p-4 rounded-xl flex justify-between items-center border border-white/5">
+            <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">
+              Insect Name
+            </span>
+            <span className="text-xl font-black text-green-400">
               {det?.class?.toUpperCase() || "---"}
             </span>
           </div>
-          <div className="glass p-3 rounded-xl flex justify-between items-center">
-            <span className="text-[10px] text-slate-500 uppercase font-bold">Confidence</span>
-            <span className="font-bold text-blue-400">
+          <div className="glass p-4 rounded-xl flex justify-between items-center border border-white/5">
+            <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">
+              Confidence Level
+            </span>
+            <span className="text-xl font-black text-blue-400">
               {det?.confidence ? `${(det.confidence * 100).toFixed(1)}%` : "0%"}
             </span>
           </div>
@@ -114,35 +189,57 @@ const handleReboot = async () => {
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8 max-w-7xl mx-auto text-white">
       <header className="flex justify-between items-end mb-8 border-b border-slate-800 pb-6">
         <div>
-          <h1 className="text-4xl font-black tracking-tighter text-white">
+          <h1 className="text-4xl font-black tracking-tighter">
             AGRI-TECH <span className="text-green-500 italic">OMAN</span>
           </h1>
           <p className="text-slate-400 font-mono text-sm tracking-widest uppercase">
-            Hybrid Autonomous Inspection Network
+            Hybrid Autonomous Detection 
           </p>
         </div>
 
         <div className="flex gap-4">
-          {finished ? (
-            <div className="bg-green-500/20 border border-green-500 px-4 py-2 rounded-lg text-center min-w-[140px]">
-              <p className="text-[10px] text-green-500 font-bold uppercase">Mission Status</p>
-              <p className="text-white font-black">COMPLETE</p>
-            </div>
-          ) : (
-            <div className="bg-blue-500/20 border border-blue-500 px-4 py-2 rounded-lg text-center min-w-[140px]">
-              <p className="text-[10px] text-blue-500 font-bold uppercase">Mission Status</p>
-              <p className="text-white font-black animate-pulse">OPERATIONAL</p>
-            </div>
-          )}
+          <div
+            className={`px-4 py-2 rounded-lg text-center min-w-[140px] border ${finished ? "bg-green-500/20 border-green-500" : "bg-blue-500/20 border-blue-500"}`}
+          >
+            <p
+              className={`text-[10px] font-bold uppercase ${finished ? "text-green-500" : "text-blue-500"}`}
+            >
+              Mission Status
+            </p>
+            <p
+              className={`font-black ${!finished && isRunning ? "animate-pulse" : ""}`}
+            >
+              {finished ? "COMPLETE" : status}
+            </p>
+          </div>
+
           <button
             onClick={handleReboot}
-            className="glass px-6 py-2 rounded-lg text-xs font-bold hover:bg-red-500/20 hover:text-red-500 transition-all border border-slate-700"
+            disabled={isRunning}
+            className={`glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 ${isRunning ? "opacity-40 cursor-not-allowed" : "hover:bg-red-500/20 hover:text-red-500"}`}
           >
-            REBOOT SYSTEM
+            REBOOT
           </button>
+
+          <button
+            onClick={handleStartMission}
+            disabled={!canStart}
+            className={`glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 ${canStart ? "hover:bg-green-500/20 hover:text-green-400" : "opacity-40 cursor-not-allowed"}`}
+          >
+            START MISSION
+          </button>
+
+          {isRunning && (
+            <button
+              onClick={handleStopMission}
+              className="glass px-6 py-2 rounded-lg text-xs font-bold hover:bg-red-500/20 hover:text-red-400 border border-slate-700"
+            >
+              STOP
+            </button>
+          )}
         </div>
       </header>
 
@@ -153,37 +250,52 @@ const handleReboot = async () => {
 
       <div className="glass p-6 rounded-2xl">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Centralized Mission Logs</h3>
+          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+            Centralized Mission Logs
+          </h3>
           {finished && (
             <span className="text-green-500 font-bold text-xs animate-bounce">
               ✓ ALL SECTORS VERIFIED
             </span>
           )}
         </div>
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-slate-500 text-xs uppercase border-b border-slate-800">
-              <th className="pb-3 px-2">Timestamp</th>
-              <th className="pb-3 px-2">Unit</th>
-              <th className="pb-3 px-2">Detection</th>
-              <th className="pb-3 px-2">Confidence</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {logs.map((l, i) => (
-              <tr key={i} className="border-b border-slate-800/50">
-                <td className="py-3 px-2 font-mono text-xs">{new Date(l.timestamp).toLocaleTimeString()}</td>
-                <td className="py-3 px-2">
-                  <span className={`px-2 py-0.5 rounded text-[10px] ${l.source === "drone" ? "bg-blue-900 text-blue-200" : "bg-red-900 text-red-200"}`}>
-                    {l.source.toUpperCase()}
-                  </span>
-                </td>
-                <td className="py-3 px-2 font-bold">{l.insect}</td>
-                <td className="py-3 px-2 text-green-400">{(l.confidence * 100).toFixed(1)}%</td>
+        <div className="max-h-[400px] overflow-y-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-slate-500 text-xs uppercase border-b border-slate-800 sticky top-0 bg-[#0a0a0a]">
+                <th className="pb-3 px-2">Timestamp</th>
+                <th className="pb-3 px-2">Unit</th>
+                <th className="pb-3 px-2">Detection</th>
+                <th className="pb-3 px-2">Confidence</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="text-sm">
+              {logs.map((l, i) => (
+                <tr
+                  key={i}
+                  className="border-b border-slate-800/50 hover:bg-white/5 transition-colors"
+                >
+                  <td className="py-3 px-2 font-mono text-xs">
+                    {new Date(l.timestamp).toLocaleTimeString()}
+                  </td>
+                  <td className="py-3 px-2">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${l.source === "drone" ? "bg-blue-900 text-blue-200" : "bg-red-900 text-red-200"}`}
+                    >
+                      {l.source?.toUpperCase() ?? "UNKNOWN"}
+                    </span>
+                  </td>
+                  <td className="py-3 px-2 font-bold">{l.insect}</td>
+                  <td className="py-3 px-2 text-green-400">
+                    {l.confidence
+                      ? `${(l.confidence * 100).toFixed(1)}%`
+                      : "---"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
