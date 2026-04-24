@@ -1,6 +1,6 @@
 ultralytics
-opencv-python
+opencv-python-headless
 fastapi
-uvicorn
-jinja2
+uvicorn[standard]
 python-multipart
+jinja2
