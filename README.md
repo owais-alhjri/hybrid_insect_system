@@ -120,6 +120,4 @@ npm start
 - If the frontend cannot connect, ensure the FastAPI server is running on port `8000`.
 - If you want to host only the frontend on Netlify, the backend must still run on a separate service and the frontend must use that deployed backend URL.
 
-## License
 
-This repository does not include a license file. Add a license if you want to share or reuse the code publicly.

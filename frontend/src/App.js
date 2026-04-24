@@ -1,7 +1,10 @@
 import { useEffect, useState, useRef } from "react";
 import "./command-center.css";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE =
+  process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:8000";
+const WS_BASE =
+  process.env.REACT_APP_WS_BASE_URL || "ws://127.0.0.1:8000";
 
 export default function App() {
   const [status, setStatus] = useState("IDLE");
@@ -13,7 +16,7 @@ export default function App() {
 
   useEffect(() => {
     const connect = () => {
-      const ws = new WebSocket("ws://127.0.0.1:8000/ws");
+      const ws = new WebSocket(`${WS_BASE}/ws`);
 
       ws.onopen = () => console.log("Connected to Backend");
 
