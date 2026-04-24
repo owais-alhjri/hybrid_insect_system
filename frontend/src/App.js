@@ -64,7 +64,7 @@ export default function App() {
     } catch (e) {
       console.error("Live status fetch failed", e);
     }
-  }, [API_BASE, handleBackendEvent]);
+  }, [handleBackendEvent]);
 
   useEffect(() => {
     const connect = () => {
@@ -98,7 +98,7 @@ export default function App() {
     return () => {
       if (socketRef.current) socketRef.current.close();
     };
-  }, []);
+  }, [handleBackendEvent]);
 
   useEffect(() => {
     if (wsConnected) return;
