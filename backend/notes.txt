@@ -1,0 +1,35 @@
+to install requirements
+pip install -r requirements.txt
+
+✅ Running the Project WITHOUT a Virtual Environment
+1️⃣ Make Sure Python Is Installed
+python --version
+
+You should see Python 3.9+
+
+2️⃣ Install Packages Globally (One Time)
+pip install ultralytics opencv-python fastapi uvicorn
+
+
+3️⃣ Run the Backend API
+uvicorn backend.api:app --reload
+
+
+Check in browser:
+
+http://127.0.0.1:8000/detections
+
+4️⃣ Run the Detection System
+
+Open another terminal:
+
+python main.py
+
+5️⃣ Open the Dashboard
+
+Open:
+
+dashboard/index.html
+
+
+🎉 That’s it — no venv involved.
