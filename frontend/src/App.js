@@ -12,59 +12,84 @@ export default function App() {
   const [tankDet, setTankDet] = useState(null);
   const [logs, setLogs] = useState([]);
   const [finished, setFinished] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [wsError, setWsError] = useState(null);
   const socketRef = useRef(null);
+
+  const handleBackendEvent = (data) => {
+    setStatus(data.status);
+    setFinished(data.status === "FINISHED");
+
+    if (data.last_detection) {
+      const det = data.last_detection;
+
+      if (det.source === "drone") {
+        setDroneDet(det);
+      } else if (det.source === "tank") {
+        setTankDet(det);
+      }
+
+      setLogs((prevLogs) => {
+        if (det.class === "Scanning...") return prevLogs;
+
+        const newTimestamp = det.timestamp || new Date().toISOString();
+
+        if (prevLogs.length > 0) {
+          const last = prevLogs[0];
+          if (
+            last.id === det.id ||
+            (last.timestamp === newTimestamp && last.insect === det.class)
+          ) {
+            return prevLogs;
+          }
+        }
+
+        const newEntry = {
+          ...det,
+          insect: det.class || "Unknown",
+          timestamp: newTimestamp,
+        };
+
+        return [newEntry, ...prevLogs].slice(0, 50);
+      });
+    }
+  };
+
+  const pollLiveStatus = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/live_status`);
+      if (!res.ok) return;
+      const data = await res.json();
+      handleBackendEvent(data);
+    } catch (e) {
+      console.error("Live status fetch failed", e);
+    }
+  };
 
   useEffect(() => {
     const connect = () => {
       const ws = new WebSocket(`${WS_BASE}/ws`);
 
-      ws.onopen = () => console.log("Connected to Backend");
+      ws.onopen = () => {
+        console.log("Connected to Backend");
+        setWsConnected(true);
+        setWsError(null);
+      };
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        setStatus(data.status);
-        setFinished(data.status === "FINISHED");
-
-        if (data.last_detection) {
-          const det = data.last_detection;
-
-          // 1. Update Live View
-          if (det.source === "drone") {
-            setDroneDet(det);
-          } else if (det.source === "tank") {
-            setTankDet(det);
-          }
-
-          // 2. Update Logs (With Filters)
-          setLogs((prevLogs) => {
-            // FILTER: Don't log "Scanning..."
-            if (det.class === "Scanning...") return prevLogs;
-
-            const newTimestamp = det.timestamp || new Date().toISOString();
-
-            // FILTER: Prevent duplicates
-            if (prevLogs.length > 0) {
-              const last = prevLogs[0];
-              if (
-                last.id === det.id ||
-                (last.timestamp === newTimestamp && last.insect === det.class)
-              ) {
-                return prevLogs;
-              }
-            }
-
-            const newEntry = {
-              ...det,
-              insect: det.class || "Unknown",
-              timestamp: newTimestamp,
-            };
-
-            return [newEntry, ...prevLogs].slice(0, 50);
-          });
-        }
+        handleBackendEvent(data);
       };
 
-      ws.onclose = () => setTimeout(connect, 2000);
+      ws.onerror = (error) => {
+        console.error("WebSocket error", error);
+        setWsError(error);
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+        setTimeout(connect, 2000);
+      };
       socketRef.current = ws;
     };
 
@@ -74,6 +99,18 @@ export default function App() {
       if (socketRef.current) socketRef.current.close();
     };
   }, []);
+
+  useEffect(() => {
+    if (wsConnected) return;
+
+    const interval = setInterval(() => {
+      pollLiveStatus();
+    }, 3000);
+
+    pollLiveStatus();
+
+    return () => clearInterval(interval);
+  }, [wsConnected]);
 
   useEffect(() => {
     if (!finished) return;
@@ -217,6 +254,22 @@ export default function App() {
             >
               {finished ? "COMPLETE" : status}
             </p>
+          </div>
+
+          <div
+            className={`px-4 py-2 rounded-lg text-center min-w-[180px] border ${wsConnected ? "bg-emerald-500/15 border-emerald-500" : "bg-yellow-500/10 border-yellow-500"}`}
+          >
+            <p className="text-[10px] font-bold uppercase text-slate-400">
+              Connection
+            </p>
+            <p className={`font-black ${wsConnected ? "text-emerald-300" : "text-yellow-300"}`}>
+              {wsConnected ? "WebSocket" : "Polling"}
+            </p>
+            {wsError && (
+              <p className="text-[10px] text-amber-200 mt-1">
+                WebSocket fallback active
+              </p>
+            )}
           </div>
 
           <button
