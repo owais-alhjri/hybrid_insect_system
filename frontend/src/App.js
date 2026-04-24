@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import "./command-center.css";
 
 const API_BASE =
@@ -16,7 +16,7 @@ export default function App() {
   const [wsError, setWsError] = useState(null);
   const socketRef = useRef(null);
 
-  const handleBackendEvent = (data) => {
+  const handleBackendEvent = useCallback((data) => {
     setStatus(data.status);
     setFinished(data.status === "FINISHED");
 
@@ -53,9 +53,9 @@ export default function App() {
         return [newEntry, ...prevLogs].slice(0, 50);
       });
     }
-  };
+  }, []);
 
-  const pollLiveStatus = async () => {
+  const pollLiveStatus = useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/live_status`);
       if (!res.ok) return;
@@ -64,7 +64,7 @@ export default function App() {
     } catch (e) {
       console.error("Live status fetch failed", e);
     }
-  };
+  }, [API_BASE, handleBackendEvent]);
 
   useEffect(() => {
     const connect = () => {
@@ -110,7 +110,7 @@ export default function App() {
     pollLiveStatus();
 
     return () => clearInterval(interval);
-  }, [wsConnected]);
+  }, [wsConnected, pollLiveStatus]);
 
   useEffect(() => {
     if (!finished) return;
