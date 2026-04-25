@@ -7,3 +7,10 @@ python run_demo.py
 cd frontend
 npm install
 npm start
+
+
+to enter .venv
+.\.venv\Scripts\Activate.ps1
+
+to exec .venv
+deactivate
