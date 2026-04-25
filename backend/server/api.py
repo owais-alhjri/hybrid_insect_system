@@ -1,5 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from server.database import DetectionDB
 import config
 import subprocess
@@ -46,6 +47,13 @@ app.add_middleware(
 
 db = DetectionDB(config.DB_NAME)
 latest_event = {"status": "IDLE", "last_detection": None}
+
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+image_dir = os.path.join(base_dir, "insects")
+metadata_file = os.path.join(base_dir, "insect_names.txt")
+
+if os.path.isdir(image_dir):
+    app.mount("/insects/images", StaticFiles(directory=image_dir), name="insects")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -147,3 +155,44 @@ async def stop_mission():
         await manager.broadcast(latest_event)
 
     return {"status": "stopped"}
+
+@app.get("/insects/list")
+def list_insects():
+    if not os.path.exists(metadata_file):
+        return []
+
+    images = {}
+    if os.path.isdir(image_dir):
+        for filename in os.listdir(image_dir):
+            name, ext = os.path.splitext(filename)
+            if ext.lower() in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+                images[name] = filename
+
+    results = []
+    with open(metadata_file, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+
+            parts = [part.strip() for part in line.replace("\t", ",").split(",") if part.strip()]
+            if len(parts) < 2:
+                continue
+
+            image_key = parts[0]
+            insect_name = ",".join(parts[1:]).strip()
+            filename = images.get(image_key)
+            if not filename:
+                for ext in [".jpg", ".jpeg", ".png", ".gif", ".webp"]:
+                    candidate = f"{image_key}{ext}"
+                    if candidate in images.values():
+                        filename = candidate
+                        break
+
+            results.append({
+                "id": image_key,
+                "name": insect_name,
+                "image": f"/insects/images/{filename}" if filename else None,
+            })
+
+    return results

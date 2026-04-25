@@ -1,0 +1,9 @@
+cd backend
+pip install -r requirements.txt
+python run_demo.py
+
+----------------------
+
+cd frontend
+npm install
+npm start
