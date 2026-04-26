@@ -25,78 +25,41 @@ The system is designed for local development and testing of a simulated drone + 
 
 ## Requirements
 
-- Python 3.10+ (or Python 3.12 as shown in the local environment)
-- Node.js 18+ / npm 10+ for the frontend
-- `pip` for Python package installation
+- Python 3.10+
+- Node.js 18+ and npm
+- `pip` for backend dependencies
 
-## Backend Setup
+## Quick Start
 
-1. Open a terminal and change into the backend folder:
+1. Open a terminal for the backend:
 
 ```powershell
 cd backend
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python run_demo.py
 ```
 
-2. Install Python dependencies:
-
-```powershell
-python -m pip install -r requirements.txt
-```
-
-3. Start the backend API:
-
-```powershell
-python -m uvicorn server.api:app --host 127.0.0.1 --port 8000
-```
-
-### Optional backend launcher
-
-The existing `backend/run_demo.py` can also be used, but it must be executed from the `backend/` folder and the internal Uvicorn target must point to `server.api:app`.
-
-## Frontend Setup
-
-1. Open a second terminal and change into the frontend folder:
+2. Open another terminal for the frontend:
 
 ```powershell
 cd frontend
-```
-
-2. Install npm dependencies:
-
-```powershell
 npm install
-```
-
-3. Start the React development server:
-
-```powershell
 npm start
 ```
 
-4. Open the UI in your browser at:
+3. Open the app in your browser:
 
 ```text
 http://localhost:3000
 ```
 
-## Local Development Notes
+## Notes
 
-- The frontend currently points to the local backend API at `http://127.0.0.1:8000` and the WebSocket at `ws://127.0.0.1:8000/ws`.
-- The simulation mission is launched by calling the backend endpoint `/start_mission` from the React UI.
-- Mission data is stored in `backend/detections.db`.
-
-## Deployment Notes
-
-- The React frontend can be deployed to Netlify or any static hosting service.
-- The FastAPI backend must be deployed separately to a Python-capable host (Render, Railway, Fly, Heroku, Azure, Cloud Run, etc.).
-- When deploying, update the frontend API base URL and WebSocket URL from `127.0.0.1` to your backend host.
-
-### Example frontend environment variables
-
-```env
-REACT_APP_API_BASE_URL=https://your-backend.example.com
-REACT_APP_WS_BASE_URL=wss://your-backend.example.com
-```
+- The frontend uses the backend API at `http://127.0.0.1:8000`.
+- The backend WebSocket URL is `ws://127.0.0.1:8000/ws`.
+- Insect images and metadata are loaded from the backend and shown on the `INSECTS` page.
+- If you do not want to use the virtual environment, run `python -m pip install -r requirements.txt` from the `backend/` folder.
 
 ## Useful Commands
 
