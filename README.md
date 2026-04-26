@@ -53,34 +53,4 @@ npm start
 ```text
 http://localhost:3000
 ```
-
-## Notes
-
-- The frontend uses the backend API at `http://127.0.0.1:8000`.
-- The backend WebSocket URL is `ws://127.0.0.1:8000/ws`.
-- Insect images and metadata are loaded from the backend and shown on the `INSECTS` page.
-- If you do not want to use the virtual environment, run `python -m pip install -r requirements.txt` from the `backend/` folder.
-
-## Useful Commands
-
-From `backend/`:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m uvicorn server.api:app --host 127.0.0.1 --port 8000
-```
-
-From `frontend/`:
-
-```powershell
-npm install
-npm start
-```
-
-## Troubleshooting
-
-- If backend import errors occur, make sure you are running commands from the `backend/` folder.
-- If the frontend cannot connect, ensure the FastAPI server is running on port `8000`.
-- If you want to host only the frontend on Netlify, the backend must still run on a separate service and the frontend must use that deployed backend URL.
-
-
+4. to exec .venv ```deactivate```
