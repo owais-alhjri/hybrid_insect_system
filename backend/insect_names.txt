@@ -1,0 +1,7 @@
+1,Longhorn Beetle
+2,Tuta Absoluta
+3,Weevil
+4,Armyworm
+5,Rhynchophorus ferrugineus
+6,White Grubs
+7,Locust
