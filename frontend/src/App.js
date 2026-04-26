@@ -9,6 +9,9 @@ export default function App() {
   const [tankDet, setTankDet] = useState(null);
   const [logs, setLogs] = useState([]);
   const [finished, setFinished] = useState(false);
+  const [page, setPage] = useState("dashboard");
+  const [insects, setInsects] = useState([]);
+  const [isLoadingInsects, setIsLoadingInsects] = useState(false);
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -107,6 +110,27 @@ export default function App() {
     } catch (e) {}
   };
 
+  const handleShowInsects = async () => {
+    setPage("insects");
+    setIsLoadingInsects(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/insects/list`);
+      if (!response.ok) throw new Error("Failed to load insect library");
+      const data = await response.json();
+      setInsects(data);
+    } catch (error) {
+      console.error("Failed to load insect library", error);
+      setInsects([]);
+    } finally {
+      setIsLoadingInsects(false);
+    }
+  };
+
+  const handleBackToDashboard = () => {
+    setPage("dashboard");
+  };
+
   const handleReboot = async () => {
     try {
       await fetch(`${API_BASE}/reset`, { method: "POST" });
@@ -193,7 +217,7 @@ export default function App() {
       <header className="flex justify-between items-end mb-8 border-b border-slate-800 pb-6">
         <div>
           <h1 className="text-4xl font-black tracking-tighter">
-            AGRI-TECH <span className="text-green-500 italic">OMAN</span>
+            INSECTS-DETECTION <span className="text-green-500 italic">OMAN</span>
           </h1>
           <p className="text-slate-400 font-mono text-sm tracking-widest uppercase">
             Hybrid Autonomous Detection 
@@ -215,6 +239,13 @@ export default function App() {
               {finished ? "COMPLETE" : status}
             </p>
           </div>
+
+          <button
+            onClick={page === "insects" ? handleBackToDashboard : handleShowInsects}
+            className="glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-yellow-500/20 hover:text-yellow-400"
+          >
+            {page === "insects" ? "DASHBOARD" : "INSECTS"}
+          </button>
 
           <button
             onClick={handleReboot}
@@ -243,60 +274,109 @@ export default function App() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {renderUnit("drone")}
-        {renderUnit("tank")}
-      </div>
+      {page === "insects" ? (
+        <div className="glass p-6 rounded-2xl">
+          <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-black">Insect Library</h2>
+              <p className="text-slate-400 text-sm mt-1">
+                Browse the insect images and names provided by the backend.
+              </p>
+            </div>
+            <button
+              onClick={handleBackToDashboard}
+              className="glass px-5 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-white/5"
+            >
+              BACK TO DASHBOARD
+            </button>
+          </div>
 
-      <div className="glass p-6 rounded-2xl">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-            Centralized Mission Logs
-          </h3>
-          {finished && (
-            <span className="text-green-500 font-bold text-xs animate-bounce">
-              ✓ ALL SECTORS VERIFIED
-            </span>
+          {isLoadingInsects ? (
+            <div className="text-slate-300">Loading insect library...</div>
+          ) : insects.length === 0 ? (
+            <div className="text-slate-400">No insects found. Please add images and metadata in the backend.</div>
+          ) : (
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+  {insects.map((insect) => (
+    <div key={insect.id} className="rounded-3xl overflow-hidden border border-slate-200 bg-white text-slate-900 shadow-sm">
+      <div className="h-64 bg-white flex items-center justify-center overflow-hidden">
+        {insect.image ? (
+          <img
+            src={`${API_BASE}${insect.image}`}
+            alt={insect.name}
+            loading="lazy"
+            className="h-full w-full object-contain"
+          />
+        ) : (
+          <div className="text-slate-500 text-sm">No image available</div>
+        )}
+      </div>
+      <div className="p-4">
+        <h3 className="text-lg font-bold">{insect.name}</h3>
+      </div>
+    </div>
+  ))}
+</div>
           )}
         </div>
-        <div className="max-h-[400px] overflow-y-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-slate-500 text-xs uppercase border-b border-slate-800 sticky top-0 bg-[#0a0a0a]">
-                <th className="pb-3 px-2">Timestamp</th>
-                <th className="pb-3 px-2">Unit</th>
-                <th className="pb-3 px-2">Detection</th>
-                <th className="pb-3 px-2">Confidence</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm">
-              {logs.map((l, i) => (
-                <tr
-                  key={i}
-                  className="border-b border-slate-800/50 hover:bg-white/5 transition-colors"
-                >
-                  <td className="py-3 px-2 font-mono text-xs">
-                    {new Date(l.timestamp).toLocaleTimeString()}
-                  </td>
-                  <td className="py-3 px-2">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${l.source === "drone" ? "bg-blue-900 text-blue-200" : "bg-red-900 text-red-200"}`}
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {renderUnit("drone")}
+            {renderUnit("tank")}
+          </div>
+
+          <div className="glass p-6 rounded-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                Centralized Mission Logs
+              </h3>
+              {finished && (
+                <span className="text-green-500 font-bold text-xs animate-bounce">
+                  ✓ ALL SECTORS VERIFIED
+                </span>
+              )}
+            </div>
+            <div className="max-h-[400px] overflow-y-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-slate-500 text-xs uppercase border-b border-slate-800 sticky top-0 bg-[#0a0a0a]">
+                    <th className="pb-3 px-2">Timestamp</th>
+                    <th className="pb-3 px-2">Unit</th>
+                    <th className="pb-3 px-2">Detection</th>
+                    <th className="pb-3 px-2">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {logs.map((l, i) => (
+                    <tr
+                      key={i}
+                      className="border-b border-slate-800/50 hover:bg-white/5 transition-colors"
                     >
-                      {l.source?.toUpperCase() ?? "UNKNOWN"}
-                    </span>
-                  </td>
-                  <td className="py-3 px-2 font-bold">{l.insect}</td>
-                  <td className="py-3 px-2 text-green-400">
-                    {l.confidence
-                      ? `${(l.confidence * 100).toFixed(1)}%`
-                      : "---"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                      <td className="py-3 px-2 font-mono text-xs">
+                        {new Date(l.timestamp).toLocaleTimeString()}
+                      </td>
+                      <td className="py-3 px-2">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${l.source === "drone" ? "bg-blue-900 text-blue-200" : "bg-red-900 text-red-200"}`}
+                        >
+                          {l.source?.toUpperCase() ?? "UNKNOWN"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-2 font-bold">{l.insect}</td>
+                      <td className="py-3 px-2 text-green-400">
+                        {l.confidence
+                          ? `${(l.confidence * 100).toFixed(1)}%`
+                          : "---"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
