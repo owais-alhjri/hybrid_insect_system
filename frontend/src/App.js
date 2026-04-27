@@ -280,7 +280,7 @@ export default function App() {
             <div>
               <h2 className="text-2xl font-black">Insect Library</h2>
               <p className="text-slate-400 text-sm mt-1">
-                Browse the insect images and names provided by the backend.
+                Browse the insect images and names.
               </p>
             </div>
             <button
