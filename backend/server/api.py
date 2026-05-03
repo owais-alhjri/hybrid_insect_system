@@ -1,13 +1,16 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from server.database import DetectionDB
+from ai.detector import InsectDetector
 import config
 import subprocess
 import sys
 import threading
 import asyncio
 import os
+import cv2
+import tempfile
 from datetime import datetime
 
 class ConnectionManager:
@@ -33,6 +36,8 @@ manager = ConnectionManager()
 mission_process = None
 mission_lock = threading.Lock()
 
+FRAME_SKIP = 3  # process 1 out of every 3 frames
+
 # FIX: Only instantiate FastAPI once
 app = FastAPI()
 
@@ -47,6 +52,12 @@ app.add_middleware(
 
 db = DetectionDB(config.DB_NAME)
 latest_event = {"status": "IDLE", "last_detection": None}
+
+video_detector = InsectDetector(config.MODEL_PATH, config.IMG_SIZE, config.DRONE_CONF_THRESHOLD)
+video_processing = False
+video_task = None
+video_stop_requested = False
+video_lock = threading.Lock()
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 image_dir = os.path.join(base_dir, "insects")
@@ -81,6 +92,125 @@ async def update_live(data: dict):
     latest_event = data
     await manager.broadcast(latest_event)
     return {"status": "ok"}
+
+async def process_video_file(file_path: str):
+    global latest_event, video_processing, video_task, video_stop_requested
+
+    cap = cv2.VideoCapture(file_path)
+    if not cap.isOpened():
+        latest_event = {"status": "VIDEO_ERROR", "last_detection": None}
+        await manager.broadcast(latest_event)
+        with video_lock:
+            video_processing = False
+            video_task = None
+        return
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    frame_index = 0
+
+    try:
+        while True:
+            if video_stop_requested:
+                latest_event = {"status": "VIDEO_STOPPED", "last_detection": None}
+                await manager.broadcast(latest_event)
+                return
+
+            success, frame = cap.read()
+            if not success:
+                break
+            if frame_index % FRAME_SKIP != 0:
+                frame_index += 1
+                continue
+            loop = asyncio.get_event_loop()
+            detections = await loop.run_in_executor(None, video_detector.detect, frame, "video")
+            if detections and detections[0].get("found"):
+                for d in detections:
+                    db.insert(d)
+
+            progress = None
+            if total_frames > 0:
+                progress = min(100, round(((frame_index + 1) / total_frames) * 100))
+
+            latest_event = {
+                "status": "VIDEO_PROCESSING",
+                "last_detection": {
+                    **detections[0],
+                    "source": "video",
+                    "progress": progress,
+                    "frame": frame_index + 1,
+                },
+            }
+            await manager.broadcast(latest_event)
+            frame_index += 1
+
+        latest_event = {"status": "VIDEO_FINISHED", "last_detection": None}
+        await manager.broadcast(latest_event)
+    except asyncio.CancelledError:
+        latest_event = {"status": "VIDEO_STOPPED", "last_detection": None}
+        await manager.broadcast(latest_event)
+        raise
+    finally:
+        cap.release()
+        with video_lock:
+            video_processing = False
+            video_task = None
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
+
+@app.post("/upload_video")
+async def upload_video(file: UploadFile = File(...)):
+    global latest_event, video_processing, video_task, video_stop_requested
+
+    with video_lock:
+        if video_processing:
+            return {"status": "busy", "message": "Video processing already in progress."}
+        video_processing = True
+        video_stop_requested = False
+        video_task = None
+
+    suffix = os.path.splitext(file.filename)[1] or ".mp4"
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        temp_file.write(await file.read())
+        temp_file.flush()
+        temp_file.close()
+    except Exception as exc:
+        temp_file.close()
+        try:
+            os.unlink(temp_file.name)
+        except Exception:
+            pass
+        with video_lock:
+            video_processing = False
+        return {"status": "error", "message": str(exc)}
+
+    latest_event = {"status": "VIDEO_PROCESSING", "last_detection": None}
+    await manager.broadcast(latest_event)
+    with video_lock:
+        video_task = asyncio.create_task(process_video_file(temp_file.name))
+
+    return {"status": "started"}
+
+@app.post("/stop_video")
+async def stop_video():
+    global latest_event, video_processing, video_task, video_stop_requested
+
+    with video_lock:
+        if not video_processing or video_task is None:
+            return {"status": "no_video", "message": "No video is processing."}
+        video_stop_requested = True
+        task = video_task
+
+    try:
+        task.cancel()
+    except Exception:
+        pass
+
+    latest_event = {"status": "VIDEO_STOPPED", "last_detection": None}
+    await manager.broadcast(latest_event)
+    return {"status": "stopped"}
 
 @app.post("/mission_complete")
 async def mission_complete():
