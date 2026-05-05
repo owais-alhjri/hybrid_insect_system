@@ -1,4 +1,4 @@
-markdown# Hybrid Insect Detection System — OMAN AGRI-TECH
+# Hybrid Insect Detection System — OMAN AGRI-TECH
 
 An automated insect detection system using a simulator-based hybrid model that replaces a physical drone–tank concept with a fully software-driven solution. The system integrates a React dashboard, a FastAPI backend, WebSocket real-time communication, a YOLOv8s AI model, and an SQLite database.
 
