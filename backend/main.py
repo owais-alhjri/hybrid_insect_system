@@ -5,6 +5,8 @@ from mock.mock_tank import MockTank
 from controller.coordinator import Coordinator
 from server.database import DetectionDB
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Initialize Components
 detector = InsectDetector(config.MODEL_PATH, config.IMG_SIZE, config.DRONE_CONF_THRESHOLD)
@@ -32,6 +34,6 @@ try:
         brain.process(tank_detections, "GROUND")
         time.sleep(2)
 
-    requests.post("http://127.0.0.1:8000/mission_complete")
+    requests.post("https://127.0.0.1:8000/mission_complete", verify=False)
 except KeyboardInterrupt:
     print("\n[STOPPED]")

@@ -1,17 +1,24 @@
 import requests
 import time
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class Coordinator:
     def __init__(self, db):
         self.db = db
-        self.api_url = "http://127.0.0.1:8000/update_live_view"
-
+        self.api_url = "https://127.0.0.1:8000/update_live_view"
+        requests.post(
+            self.api_url,
+            json={"status": "IDLE", "last_detection": None},
+            verify=False,
+        )
     def send_ui_update(self, status, detection_data):
         try:
-            requests.post(self.api_url, json={
-                "status": status,
-                "last_detection": detection_data
-            })
+            requests.post(
+                self.api_url,
+                json={"status": status, "last_detection": detection_data},
+                verify=False,
+            )
         except Exception as e:
             print(f"[UI ERROR] {e}")
 

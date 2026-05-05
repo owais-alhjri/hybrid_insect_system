@@ -3,3 +3,9 @@ opencv-python-headless
 fastapi
 uvicorn[standard]
 python-multipart
+qrcode[pil]
+aiortc
+aioice
+cryptography
+requests
+numpy

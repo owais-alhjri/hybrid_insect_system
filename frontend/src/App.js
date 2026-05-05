@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from "react";
 import "./command-center.css";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://127.0.0.1:8000";
+const WS_URL = "wss://127.0.0.1:8000/ws";
 
 export default function App() {
   const [status, setStatus] = useState("IDLE");
@@ -9,6 +10,9 @@ export default function App() {
   const [tankDet, setTankDet] = useState(null);
   const [videoDet, setVideoDet] = useState(null);
   const [videoStatus, setVideoStatus] = useState("IDLE");
+  const [cameraDet, setCameraDet] = useState(null);
+  const [cameraStatus, setCameraStatus] = useState("IDLE");
+  const [cameraQrUrl, setCameraQrUrl] = useState("");
   const [videoFile, setVideoFile] = useState(null);
   const [videoUploadState, setVideoUploadState] = useState("");
   const [logs, setLogs] = useState([]);
@@ -16,21 +20,41 @@ export default function App() {
   const [page, setPage] = useState("dashboard");
   const [insects, setInsects] = useState([]);
   const [isLoadingInsects, setIsLoadingInsects] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const socketRef = useRef(null);
 
-  useEffect(() => {
+useEffect(() => {
     const connect = () => {
-      const ws = new WebSocket("ws://127.0.0.1:8000/ws");
-
+      const ws = new WebSocket(WS_URL);
       ws.onopen = () => console.log("Connected to Backend");
-
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        setStatus(data.status);
-        setFinished(data.status === "FINISHED" || data.status === "VIDEO_FINISHED");
+
+        if (!data.status.startsWith("CAMERA")) {
+          setStatus(data.status);
+        }
+        if (data.status.startsWith("CAMERA")) {
+          setCameraStatus(data.status);
+        }
+        if (data.status.startsWith("VIDEO")) {
+          setVideoStatus(data.status);
+        }
+
+        if (
+          data.status === "FINISHED" ||
+          data.status === "VIDEO_FINISHED" ||
+          data.status === "CAMERA_FINISHED"
+        ) {
+          setFinished(true);
+        }
 
         if (data.last_detection) {
           const det = data.last_detection;
+
+          if (det.source === "camera") {
+            setCameraDet(det);
+            setCameraStatus(data.status);
+          }
 
           // 1. Update Live View
           if (det.source === "drone") {
@@ -52,7 +76,8 @@ export default function App() {
           // 2. Update Logs (With Filters)
           setLogs((prevLogs) => {
             // FILTER: Don't log "Scanning..."
-            if (det.class === "Scanning...") return prevLogs;
+            if (det.class === "Scanning..." || det.class === "None")
+              return prevLogs;
 
             const newTimestamp = det.timestamp || new Date().toISOString();
 
@@ -119,9 +144,15 @@ export default function App() {
   };
 
   const handleStopMission = async () => {
+    if (!isRunning || isStopping) return;
+    setIsStopping(true);
     try {
       await fetch(`${API_BASE}/stop_mission`, { method: "POST" });
-    } catch (e) {}
+    } catch (e) {
+      console.error("Stop mission failed", e);
+    } finally {
+      setIsStopping(false);
+    }
   };
 
   const handleShowInsects = async () => {
@@ -147,6 +178,9 @@ export default function App() {
     setVideoDet(null);
     setVideoUploadState("");
     setVideoStatus("IDLE");
+    setCameraDet(null);
+    setCameraStatus("IDLE");
+    setCameraQrUrl("");
   };
 
   const handleShowVideoPage = () => {
@@ -154,6 +188,20 @@ export default function App() {
     setVideoDet(null);
     setVideoUploadState("");
     setVideoStatus("IDLE");
+  };
+
+  const handleShowCameraPage = async () => {
+    setPage("camera");
+    setCameraDet(null);
+    setCameraStatus("IDLE");
+    setCameraQrUrl("");
+
+    try {
+      setCameraQrUrl(`${API_BASE}/camera-qr?${Date.now()}`);
+    } catch (error) {
+      console.error("Failed to build camera QR URL", error);
+      setCameraQrUrl(`${API_BASE}/camera-qr?${Date.now()}`);
+    }
   };
 
   const handleVideoFileChange = (event) => {
@@ -191,7 +239,9 @@ export default function App() {
 
   const handleStopVideo = async () => {
     try {
-      const response = await fetch(`${API_BASE}/stop_video`, { method: "POST" });
+      const response = await fetch(`${API_BASE}/stop_video`, {
+        method: "POST",
+      });
       const data = await response.json();
       if (data.status === "stopped") {
         setVideoUploadState("stopped");
@@ -291,10 +341,11 @@ export default function App() {
       <header className="flex justify-between items-end mb-8 border-b border-slate-800 pb-6">
         <div>
           <h1 className="text-4xl font-black tracking-tighter">
-            INSECTS-DETECTION <span className="text-green-500 italic">OMAN</span>
+            INSECTS-DETECTION{" "}
+            <span className="text-green-500 italic">OMAN</span>
           </h1>
           <p className="text-slate-400 font-mono text-sm tracking-widest uppercase">
-            Hybrid Autonomous Detection 
+            Hybrid Autonomous Detection
           </p>
         </div>
 
@@ -315,14 +366,27 @@ export default function App() {
           </div>
 
           <button
-            onClick={page === "insects" ? handleBackToDashboard : handleShowInsects}
+            onClick={
+              page === "insects" ? handleBackToDashboard : handleShowInsects
+            }
             className="glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-yellow-500/20 hover:text-yellow-400"
           >
             {page === "insects" ? "DASHBOARD" : "INSECTS"}
           </button>
 
           <button
-            onClick={page === "video" ? handleBackToDashboard : handleShowVideoPage}
+            onClick={
+              page === "camera" ? handleBackToDashboard : handleShowCameraPage
+            }
+            className="glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-teal-500/20 hover:text-teal-400"
+          >
+            {page === "camera" ? "DASHBOARD" : "CAMERA"}
+          </button>
+
+          <button
+            onClick={
+              page === "video" ? handleBackToDashboard : handleShowVideoPage
+            }
             className="glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-purple-500/20 hover:text-purple-400"
           >
             {page === "video" ? "DASHBOARD" : "VIDEO"}
@@ -347,7 +411,8 @@ export default function App() {
           {isRunning && (
             <button
               onClick={handleStopMission}
-              className="glass px-6 py-2 rounded-lg text-xs font-bold hover:bg-red-500/20 hover:text-red-400 border border-slate-700"
+              disabled={isStopping}
+              className={`glass px-6 py-2 rounded-lg text-xs font-bold border border-slate-700 ${isStopping ? "opacity-40 cursor-not-allowed" : "hover:bg-red-500/20 hover:text-red-400"}`}
             >
               STOP
             </button>
@@ -375,29 +440,36 @@ export default function App() {
           {isLoadingInsects ? (
             <div className="text-slate-300">Loading insect library...</div>
           ) : insects.length === 0 ? (
-            <div className="text-slate-400">No insects found. Please add images and metadata in the backend.</div>
+            <div className="text-slate-400">
+              No insects found. Please add images and metadata in the backend.
+            </div>
           ) : (
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-  {insects.map((insect) => (
-    <div key={insect.id} className="rounded-3xl overflow-hidden border border-slate-200 bg-white text-slate-900 shadow-sm">
-      <div className="h-64 bg-white flex items-center justify-center overflow-hidden">
-        {insect.image ? (
-          <img
-            src={`${API_BASE}${insect.image}`}
-            alt={insect.name}
-            loading="lazy"
-            className="h-full w-full object-contain"
-          />
-        ) : (
-          <div className="text-slate-500 text-sm">No image available</div>
-        )}
-      </div>
-      <div className="p-4">
-        <h3 className="text-lg font-bold">{insect.name}</h3>
-      </div>
-    </div>
-  ))}
-</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {insects.map((insect) => (
+                <div
+                  key={insect.id}
+                  className="rounded-3xl overflow-hidden border border-slate-200 bg-white text-slate-900 shadow-sm"
+                >
+                  <div className="h-64 bg-white flex items-center justify-center overflow-hidden">
+                    {insect.image ? (
+                      <img
+                        src={`${API_BASE}${insect.image}`}
+                        alt={insect.name}
+                        loading="lazy"
+                        className="h-full w-full object-contain"
+                      />
+                    ) : (
+                      <div className="text-slate-500 text-sm">
+                        No image available
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4">
+                    <h3 className="text-lg font-bold">{insect.name}</h3>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       ) : page === "video" ? (
@@ -419,7 +491,9 @@ export default function App() {
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             <div className="glass p-6 rounded-2xl border border-slate-700">
-              <label className="block text-slate-400 text-xs uppercase tracking-widest mb-2">Select video file</label>
+              <label className="block text-slate-400 text-xs uppercase tracking-widest mb-2">
+                Select video file
+              </label>
               <input
                 type="file"
                 accept="video/*"
@@ -429,10 +503,15 @@ export default function App() {
               <div className="flex flex-col gap-3">
                 <button
                   onClick={handleUploadVideo}
-                  disabled={!videoFile || videoUploadState === "uploading" || videoUploadState === "processing"}
+                  disabled={
+                    !videoFile ||
+                    videoUploadState === "uploading" ||
+                    videoUploadState === "processing"
+                  }
                   className="mt-4 glass px-5 py-3 rounded-lg text-xs font-bold border border-slate-700 hover:bg-green-500/20"
                 >
-                  {videoUploadState === "uploading" || videoUploadState === "processing"
+                  {videoUploadState === "uploading" ||
+                  videoUploadState === "processing"
                     ? "Uploading..."
                     : "Start Video Detection"}
                 </button>
@@ -445,20 +524,30 @@ export default function App() {
                 </button>
               </div>
               {videoUploadState === "error" && (
-                <p className="mt-3 text-sm text-red-400">Upload failed. Please try again.</p>
+                <p className="mt-3 text-sm text-red-400">
+                  Upload failed. Please try again.
+                </p>
               )}
               {videoUploadState === "processing" && (
-                <p className="mt-3 text-sm text-green-400">Video is processing. Watch the live feed below.</p>
+                <p className="mt-3 text-sm text-green-400">
+                  Video is processing. Watch the live feed below.
+                </p>
               )}
               {videoUploadState === "stopped" && (
-                <p className="mt-3 text-sm text-yellow-300">Video processing was stopped.</p>
+                <p className="mt-3 text-sm text-yellow-300">
+                  Video processing was stopped.
+                </p>
               )}
             </div>
 
             <div className="glass p-6 rounded-2xl border border-slate-700 lg:col-span-2">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Video Detection Preview</h3>
-                <span className="text-xs text-slate-400">Status: {videoStatus}</span>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                  Video Detection Preview
+                </h3>
+                <span className="text-xs text-slate-400">
+                  Status: {videoStatus}
+                </span>
               </div>
               <div className="live-feed h-[420px] relative overflow-hidden rounded-2xl bg-black/50 border border-white/10">
                 {videoDet?.image ? (
@@ -475,12 +564,20 @@ export default function App() {
               </div>
               <div className="mt-6 space-y-3">
                 <div className="glass p-4 rounded-xl flex justify-between items-center border border-white/10">
-                  <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">Detected Insect</span>
-                  <span className="text-xl font-black text-green-400">{videoDet?.class?.toUpperCase() || "---"}</span>
+                  <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">
+                    Detected Insect
+                  </span>
+                  <span className="text-xl font-black text-green-400">
+                    {videoDet?.class?.toUpperCase() || "---"}
+                  </span>
                 </div>
                 <div className="glass p-4 rounded-xl flex justify-between items-center border border-white/10">
-                  <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">Frame Progress</span>
-                  <span className="text-xl font-black text-blue-400">{videoDet?.progress ? `${videoDet.progress}%` : "--"}</span>
+                  <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">
+                    Frame Progress
+                  </span>
+                  <span className="text-xl font-black text-blue-400">
+                    {videoDet?.progress ? `${videoDet.progress}%` : "--"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -488,7 +585,9 @@ export default function App() {
 
           <div className="glass p-6 rounded-2xl">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Video Detection Logs</h3>
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                Video Detection Logs
+              </h3>
             </div>
             <div className="max-h-[400px] overflow-y-auto">
               <table className="w-full text-left">
@@ -518,7 +617,138 @@ export default function App() {
                         </td>
                         <td className="py-3 px-2 font-bold">{l.insect}</td>
                         <td className="py-3 px-2 text-green-400">
-                          {l.confidence ? `${(l.confidence * 100).toFixed(1)}%` : "---"}
+                          {l.confidence
+                            ? `${(l.confidence * 100).toFixed(1)}%`
+                            : "---"}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : page === "camera" ? (
+        <div className="glass p-6 rounded-2xl">
+          <div className="flex flex-col gap-4 mb-6 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-black">Camera Detection</h2>
+              <p className="text-slate-400 text-sm mt-1">
+                Scan the QR code with your phone to stream camera frames to the
+                backend.
+              </p>
+            </div>
+            <button
+              onClick={handleBackToDashboard}
+              className="glass px-5 py-2 rounded-lg text-xs font-bold border border-slate-700 hover:bg-white/5"
+            >
+              BACK TO DASHBOARD
+            </button>
+          </div>
+
+          <div className="glass p-6 rounded-2xl border border-slate-700 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                Camera QR Code
+              </h3>
+              <span className="text-xs text-slate-400">
+                Scan from your phone
+              </span>
+            </div>
+            <div className="flex items-center justify-center py-6">
+              {cameraQrUrl ? (
+                <img
+                  src={cameraQrUrl}
+                  alt="Scan to open camera"
+                  className="h-64 w-64 object-contain"
+                />
+              ) : (
+                <div className="text-slate-400">Loading QR code...</div>
+              )}
+            </div>
+          </div>
+
+          <div className="glass p-6 rounded-2xl border border-slate-700 mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                Live Camera Preview
+              </h3>
+              <span className="text-xs text-slate-400">
+                Status: {cameraStatus}
+              </span>
+            </div>
+            <div className="live-feed h-[420px] relative overflow-hidden rounded-2xl bg-black/50 border border-white/10">
+              {cameraDet?.image ? (
+                <img
+                  src={`data:image/jpeg;base64,${cameraDet.image}`}
+                  className="w-full h-full object-contain"
+                  alt="Camera Detection"
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-500 font-mono text-sm text-center px-4 tracking-widest">
+                  Scan the QR code with your phone and allow camera access.
+                </div>
+              )}
+            </div>
+            <div className="mt-6 space-y-3">
+              <div className="glass p-4 rounded-xl flex justify-between items-center border border-white/10">
+                <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">
+                  Detected Insect
+                </span>
+                <span className="text-xl font-black text-green-400">
+                  {cameraDet?.class?.toUpperCase() || "---"}
+                </span>
+              </div>
+              <div className="glass p-4 rounded-xl flex justify-between items-center border border-white/10">
+                <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">
+                  Frame Timestamp
+                </span>
+                <span className="text-xl font-black text-blue-400">
+                  {cameraDet?.timestamp
+                    ? new Date(cameraDet.timestamp).toLocaleTimeString()
+                    : "--"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="glass p-6 rounded-2xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                Camera Detection Logs
+              </h3>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-slate-500 text-xs uppercase border-b border-slate-800 sticky top-0 bg-[#0a0a0a]">
+                    <th className="pb-3 px-2">Timestamp</th>
+                    <th className="pb-3 px-2">Source</th>
+                    <th className="pb-3 px-2">Detection</th>
+                    <th className="pb-3 px-2">Confidence</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm">
+                  {logs
+                    .filter((l) => l.source === "camera")
+                    .map((l, i) => (
+                      <tr
+                        key={i}
+                        className="border-b border-slate-800/50 hover:bg-white/5 transition-colors"
+                      >
+                        <td className="py-3 px-2 font-mono text-xs">
+                          {new Date(l.timestamp).toLocaleTimeString()}
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-900 text-teal-200">
+                            CAMERA
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 font-bold">{l.insect}</td>
+                        <td className="py-3 px-2 text-green-400">
+                          {l.confidence
+                            ? `${(l.confidence * 100).toFixed(1)}%`
+                            : "---"}
                         </td>
                       </tr>
                     ))}
@@ -570,10 +800,10 @@ export default function App() {
                             l.source === "drone"
                               ? "bg-blue-900 text-blue-200"
                               : l.source === "tank"
-                              ? "bg-red-900 text-red-200"
-                              : l.source === "video"
-                              ? "bg-purple-900 text-purple-200"
-                              : "bg-slate-700 text-slate-200"
+                                ? "bg-red-900 text-red-200"
+                                : l.source === "video"
+                                  ? "bg-purple-900 text-purple-200"
+                                  : "bg-slate-700 text-slate-200"
                           }`}
                         >
                           {l.source?.toUpperCase() ?? "UNKNOWN"}

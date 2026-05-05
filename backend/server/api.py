@@ -1,6 +1,7 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, StreamingResponse
 from server.database import DetectionDB
 from ai.detector import InsectDetector
 import config
@@ -9,8 +10,14 @@ import sys
 import threading
 import asyncio
 import os
+import socket
 import cv2
+import numpy as np
+import qrcode
 import tempfile
+from io import BytesIO
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaRelay
 from datetime import datetime
 
 class ConnectionManager:
@@ -33,6 +40,8 @@ class ConnectionManager:
                 self.disconnect(connection)
 
 manager = ConnectionManager()
+pcs = set()
+relay = MediaRelay()
 mission_process = None
 mission_lock = threading.Lock()
 
@@ -53,6 +62,72 @@ app.add_middleware(
 db = DetectionDB(config.DB_NAME)
 latest_event = {"status": "IDLE", "last_detection": None}
 
+class DetectionVideoTrack:
+    def __init__(self, track, source="camera"):
+        self.track = track
+        self.source = source
+        self.frame_count = 0
+        self.DETECT_EVERY = 45
+        self.running = True
+
+    async def start(self):
+        while self.running:
+            try:
+                frame = await asyncio.wait_for(self.track.recv(), timeout=15.0)
+                self.frame_count += 1
+
+                if self.frame_count % self.DETECT_EVERY != 0:
+                    continue
+
+                img = frame.to_ndarray(format="bgr24")
+
+
+                ## if you have GPU delete this
+                img = cv2.resize(img, (320, 240))
+
+                ## if you have strong CPU but no GPU use this
+                ## img = cv2.resize(img, (640x480))
+
+
+                loop = asyncio.get_event_loop()
+                detections = await loop.run_in_executor(
+                    None, video_detector.detect, img, "camera"
+                )
+
+                det = detections[0]
+
+                if det.get("found"):
+                    db.insert(det)
+                    await manager.broadcast({
+                        "status": "CAMERA_PROCESSING",
+                        "last_detection": {**det, "source": "camera"},
+                    })
+                elif self.frame_count % self.DETECT_EVERY == 0:
+                    # Send frame image even when nothing detected so dashboard shows live feed
+                    await manager.broadcast({
+                        "status": "CAMERA_PROCESSING",
+                        "last_detection": {
+                            **det,
+                            "source": "camera",
+                            "image": det.get("image") or det.get("raw_image"),
+                        },
+                    })
+
+            except asyncio.TimeoutError:
+                print("[WEBRTC] Frame timeout — connection dropped")
+                break
+            except Exception as e:
+                print(f"[WEBRTC] Frame error: {e}")
+                break
+
+        await manager.broadcast({
+            "status": "CAMERA_FINISHED",
+            "last_detection": None
+        })
+
+    def stop(self):
+        self.running = False
+
 video_detector = InsectDetector(config.MODEL_PATH, config.IMG_SIZE, config.DRONE_CONF_THRESHOLD)
 video_processing = False
 video_task = None
@@ -72,8 +147,14 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.send_json(latest_event)
     try:
         while True:
-            await asyncio.sleep(1) # Keep connection alive
-    except WebSocketDisconnect:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+            except Exception as inner_error:
+                print(f"[WS] receive error: {inner_error}")
+                break
+    finally:
         manager.disconnect(websocket)
 
 @app.get("/live_status")
@@ -92,6 +173,240 @@ async def update_live(data: dict):
     latest_event = data
     await manager.broadcast(latest_event)
     return {"status": "ok"}
+
+def get_local_ip():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            return sock.getsockname()[0]
+    except Exception:
+        return "127.0.0.1"
+
+CAMERA_PAGE_TEMPLATE = """
+<!DOCTYPE html>
+<html lang=\"en\">
+<head>
+  <meta charset=\"UTF-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+  <title>Live Camera Detection</title>
+  <style>
+    body { margin:0; font-family:system-ui, sans-serif; background:#0b1120; color:#f8fafc; display:flex; min-height:100vh; align-items:center; justify-content:center; }
+    .page { width:min(100%, 480px); padding:24px; }
+    h1 { margin:0 0 12px; font-size:1.8rem; }
+    p { margin:0 0 12px; color:#cbd5e1; }
+    .status { margin:0 0 16px; display:flex; gap:12px; align-items:center; }
+    video { width:100%; border-radius:18px; background:#000; }
+    .info { margin-top:14px; font-size:0.95rem; color:#94a3b8; }
+    .label { font-weight:700; color:#f8fafc; }
+  </style>
+</head>
+<body>
+  <div class=\"page\">
+    <h1>Live Camera Detection</h1>
+    <div class=\"status\"><span id=\"connection\">Connecting...</span><span id=\"message\"></span></div>
+    <video id=\"cameraVideo\" autoplay playsinline muted></video>
+    <canvas id=\"captureCanvas\" width=\"640\" height=\"480\" style=\"display:none;\"></canvas>
+<button id="stopBtn" onclick="stopCamera()" disabled style="margin-top:16px; width:100%; padding:14px; background:#ef4444; color:#fff; border:none; border-radius:12px; font-size:1rem; font-weight:700; cursor:pointer; opacity:0.4;">
+      Stop Camera
+    </button>
+    <button id="startBtn" onclick="startCamera()" style="margin-top:10px; width:100%; padding:14px; background:#22c55e; color:#fff; border:none; border-radius:12px; font-size:1rem; font-weight:700; cursor:pointer;">
+      Start Camera
+    </button>
+  </div>
+  <script>
+    let pc = null;
+    let stream = null;
+    const statusEl = document.getElementById('connection');
+    const messageEl = document.getElementById('message');
+    const localVideo = document.getElementById('cameraVideo');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+
+    function setStatus(text) { statusEl.textContent = text; }
+    function setMessage(text) { messageEl.textContent = text; }
+    function setButtons(running) {
+      startBtn.disabled = running;
+      startBtn.style.opacity = running ? '0.4' : '1';
+      stopBtn.disabled = !running;
+      stopBtn.style.opacity = running ? '1' : '0.4';
+    }
+
+    function getUserMedia(constraints) {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        return navigator.mediaDevices.getUserMedia(constraints);
+      }
+
+      const legacyGetUserMedia =
+        navigator.getUserMedia ||
+        navigator.webkitGetUserMedia ||
+        navigator.mozGetUserMedia ||
+        navigator.msGetUserMedia;
+
+      if (legacyGetUserMedia) {
+        return new Promise((resolve, reject) => {
+          legacyGetUserMedia.call(navigator, constraints, resolve, reject);
+        });
+      }
+
+      return Promise.reject(
+        new Error(
+          'Camera access is not available in this browser. Use a modern browser with WebRTC support.'
+        )
+      );
+    }
+
+async function startCamera() {
+  setStatus('Requesting camera...');
+  setButtons(true);
+  setMessage('');
+
+  try {
+    stream = await getUserMedia({
+      video: { facingMode: 'environment' },
+      audio: false,
+    });
+
+    localVideo.srcObject = stream;
+
+    const PeerConnection =
+      window.RTCPeerConnection ||
+      window.webkitRTCPeerConnection ||
+      window.mozRTCPeerConnection;
+
+    if (!PeerConnection) {
+      throw new Error('WebRTC is not supported by this browser.');
+    }
+
+pc = new PeerConnection({
+  iceServers: [],
+});
+
+pc.onconnectionstatechange = () => {
+  setStatus('State: ' + pc.connectionState);
+  if (pc.connectionState === 'connected') {
+    setStatus('Streaming...');
+    setButtons(true);
+  } else if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+    setStatus('Connection lost');
+    setButtons(false);
+  }
+};
+
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Wait for ICE gathering to complete before sending offer
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        pc.addEventListener('icegatheringstatechange', () => {
+          if (pc.iceGatheringState === 'complete') resolve();
+        });
+        // Fallback timeout in case gathering takes too long
+        setTimeout(resolve, 8000);
+      }
+    });
+
+    setStatus('Connecting to backend...');
+
+    const response = await fetch(`https://{host}:8000/webrtc/offer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sdp: pc.localDescription.sdp,
+        type: pc.localDescription.type
+      }),
+    });
+
+    const answer = await response.json();
+    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+    setStatus('Streaming...');
+  } catch (err) {
+    setStatus('Error: ' + (err.message || err));
+    setButtons(false);
+  }
+}
+
+    function stopCamera() {
+      if (pc) {
+        pc.close();
+        pc = null;
+      }
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+        stream = null;
+      }
+      localVideo.srcObject = null;
+      setStatus('Stopped');
+      setButtons(false);
+    }
+
+    window.addEventListener('beforeunload', stopCamera);
+  </script>
+</body>
+</html>
+"""
+
+@app.get("/camera")
+async def camera_page(request: Request):
+    host = get_local_ip()
+    content = CAMERA_PAGE_TEMPLATE.replace("{host}", host)
+    return HTMLResponse(content=content, status_code=200)
+
+@app.get("/camera-qr")
+async def camera_qr(request: Request):
+    host = get_local_ip()
+    camera_host = f"https://{host}:8000"
+    camera_url = f"{camera_host}/camera"
+    img = qrcode.make(camera_url)
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="image/png")
+
+@app.post("/webrtc/offer")
+async def webrtc_offer(request: Request):
+    params = await request.json()
+    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+
+    pc = RTCPeerConnection()
+    pcs.add(pc)
+
+    @pc.on("connectionstatechange")
+    async def on_connectionstatechange():
+        print(f"[WEBRTC] Connection state: {pc.connectionState}")
+        if pc.connectionState in ["failed", "closed", "disconnected"]:
+            if hasattr(pc, '_detector'):
+                pc._detector.stop()
+            await pc.close()
+            pcs.discard(pc)
+            await manager.broadcast({
+                "status": "CAMERA_FINISHED",
+                "last_detection": None
+            })
+
+    @pc.on("track")
+    def on_track(track):
+        print(f"[WEBRTC] Track received: kind={track.kind}")
+        if track.kind == "video":
+            detector = DetectionVideoTrack(relay.subscribe(track))
+            pc._detector = detector
+            asyncio.ensure_future(detector.start())
+
+    await pc.setRemoteDescription(offer)
+    answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    return {"sdp": pc.localDescription.sdp, "type": pc.localDescription.type}
+@app.on_event("shutdown")
+async def on_shutdown():
+    await asyncio.gather(*[pc.close() for pc in pcs], return_exceptions=True)
+    pcs.clear()
+
 
 async def process_video_file(file_path: str):
     global latest_event, video_processing, video_task, video_stop_requested

@@ -1,56 +1,28 @@
-# Hybrid Insect System
+## How to Use
 
-A hybrid autonomous insect detection system with a FastAPI backend and a React frontend.
+| Feature | How |
+|---|---|
+| Start mission | Click **START MISSION** on the dashboard |
+| Stop mission | Click **STOP** |
+| Video detection | Click **VIDEO** → upload a video file → click Start |
+| Live camera | Click **CAMERA** → scan QR with phone → tap Start Camera |
+| Insect library | Click **INSECTS** |
+| Reset/clear logs | Click **REBOOT** |
 
-## Project Overview
+## Tech Stack
 
-- `backend/` contains the Python simulation, FastAPI server, object detection integration, and local SQLite storage.
-- `frontend/` contains the React dashboard and live-status UI.
+| Layer | Technology |
+|---|---|
+| AI Model | YOLOv8s (Ultralytics) |
+| Backend | FastAPI, Uvicorn |
+| Real-time | WebSocket |
+| Live Camera | WebRTC (aiortc) |
+| Frontend | React |
+| Database | SQLite |
+| SSL | Self-signed cert (cryptography library) |
 
-The system is designed for local development and testing of a simulated drone + tank mission flow.
-
-## Repository Structure
-
-- `backend/`
-  - `run_demo.py` - helper script to launch the FastAPI backend.
-  - `server/api.py` - FastAPI app with WebSocket and mission control endpoints.
-  - `main.py` - mission simulator that runs the drone and tank detection loop.
-  - `config.py` - model, image source, and database configuration.
-  - `requirements.txt` - Python dependencies for the backend.
-  - `detections.db` - SQLite database file created at runtime.
-- `frontend/`
-  - `package.json` - React app dependencies and scripts.
-  - `src/` - React source code and UI logic.
-  - `public/` - static frontend assets.
-
-## Requirements
-
-- Python 3.10+
-- Node.js 18+ and npm
-- `pip` for backend dependencies
-
-## Quick Start
-
-1. Open a terminal for the backend:
+## Deactivate virtual environment
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python run_demo.py
+deactivate
 ```
-
-2. Open another terminal for the frontend:
-
-```powershell
-cd frontend
-npm install
-npm start
-```
-
-3. Open the app in your browser:
-
-```text
-http://localhost:3000
-```
-4. to exec .venv ```deactivate```
