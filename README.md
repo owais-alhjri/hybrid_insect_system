@@ -22,6 +22,8 @@ An automated insect detection system using a simulator-based hybrid model that r
 - Locust
 
 ## Project Structure
+
+```
 hybrid_insect_system/
 ├── backend/
 │   ├── run_demo.py              # Launch script — starts backend with HTTPS
@@ -43,11 +45,12 @@ hybrid_insect_system/
 │       ├── mock_drone.py        # Simulated aerial unit
 │       └── mock_tank.py         # Simulated ground unit
 └── frontend/
-├── package.json             # React dependencies
-├── src/
-│   ├── App.js               # Main dashboard — all pages and WebSocket logic
-│   └── command-center.css   # Dashboard styles
-└── public/                  # Static assets
+    ├── package.json             # React dependencies
+    ├── src/
+    │   ├── App.js               # Main dashboard — all pages and WebSocket logic
+    │   └── command-center.css   # Dashboard styles
+    └── public/                  # Static assets
+```
 
 ## Requirements
 
